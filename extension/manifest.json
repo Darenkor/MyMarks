@@ -1,0 +1,47 @@
+{
+    "manifest_version": 3,
+    "name": "MyMarks — Guardar Marcador",
+    "version": "1.0.0",
+    "description": "Guarda la pestaña actual en tu gestor de marcadores MyMarks con un solo clic.",
+    "permissions": [
+        "activeTab",
+        "storage",
+        "scripting"
+    ],
+    "action": {
+        "default_popup": "popup.html",
+        "default_icon": {
+            "16": "icons/icon16.svg",
+            "48": "icons/icon48.svg",
+            "128": "icons/icon128.svg"
+        }
+    },
+    "icons": {
+        "16": "icons/icon16.svg",
+        "48": "icons/icon48.svg",
+        "128": "icons/icon128.svg"
+    },
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "http://localhost:*/*",
+                "https://*.netlify.app/*",
+                "https://*.vercel.app/*",
+                "https://*.github.io/*"
+            ],
+            "js": [
+                "content.js"
+            ],
+            "run_at": "document_idle"
+        }
+    ],
+    "host_permissions": [
+        "http://localhost:*/*",
+        "https://*.netlify.app/*",
+        "https://*.vercel.app/*",
+        "https://*.github.io/*"
+    ]
+}

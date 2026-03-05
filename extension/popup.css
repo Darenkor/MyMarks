@@ -1,0 +1,233 @@
+/* ============================================
+   popup.css — Extension Popup Styles
+   ============================================ */
+
+:root {
+    --bg: #1a1a2e;
+    --bg-input: #252540;
+    --bg-hover: #2a2a45;
+    --text: #e8e8f0;
+    --text-secondary: #9ca3af;
+    --text-muted: #6b7280;
+    --accent: #6366f1;
+    --accent-hover: #5558e3;
+    --accent-glow: rgba(99, 102, 241, 0.25);
+    --border: #2a2a40;
+    --success: #10b981;
+    --radius: 10px;
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    width: 340px;
+    min-height: 380px;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+}
+
+#popup {
+    padding: 16px;
+}
+
+.popup-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.popup-logo {
+    width: 22px;
+    height: 22px;
+    color: var(--accent);
+    filter: drop-shadow(0 0 6px var(--accent-glow));
+}
+
+.popup-title {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+}
+
+.page-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg-input);
+    border-radius: var(--radius);
+    margin-bottom: 14px;
+    border: 1px solid var(--border);
+}
+
+.page-favicon {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.page-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.page-title {
+    font-weight: 600;
+    font-size: 12.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.page-url {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.popup-form {
+    margin-bottom: 14px;
+}
+
+.form-group {
+    margin-bottom: 10px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 12.5px;
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.form-group select {
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 28px;
+}
+
+.form-group textarea {
+    resize: vertical;
+    min-height: 42px;
+}
+
+.save-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px var(--accent-glow);
+}
+
+.save-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.save-btn:hover:not(:disabled) {
+    background: var(--accent-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px var(--accent-glow);
+}
+
+.save-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.save-btn.saved {
+    background: var(--success);
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
+}
+
+.status-msg {
+    text-align: center;
+    padding: 8px;
+    margin-top: 8px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.status-msg.success {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--success);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.status-msg.error {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.popup-footer {
+    text-align: center;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    margin-top: 12px;
+}
+
+.popup-footer a {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 11px;
+    transition: color 0.2s;
+}
+
+.popup-footer a:hover {
+    color: var(--accent);
+}

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MyMarks</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="popup.css" />
+</head>
+
+<body>
+    <div id="popup">
+        <div class="popup-header">
+            <svg class="popup-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+            </svg>
+            <span class="popup-title">MyMarks</span>
+        </div>
+
+        <!-- Current page info -->
+        <div class="page-info">
+            <img id="page-favicon" class="page-favicon" src="" alt="" />
+            <div class="page-details">
+                <div id="page-title" class="page-title">Cargando...</div>
+                <div id="page-url" class="page-url"></div>
+            </div>
+        </div>
+
+        <!-- Form -->
+        <div class="popup-form">
+            <div class="form-group">
+                <label for="bookmark-title">Título</label>
+                <input type="text" id="bookmark-title" placeholder="Título del marcador" />
+            </div>
+
+            <div class="form-group">
+                <label for="board-select">Tablero</label>
+                <select id="board-select">
+                    <option value="">-- Seleccionar tablero --</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="category-select">Categoría</label>
+                <select id="category-select" disabled>
+                    <option value="">-- Selecciona un tablero primero --</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="bookmark-notes">Notas (opcional)</label>
+                <textarea id="bookmark-notes" rows="2" placeholder="Añadir notas..."></textarea>
+            </div>
+        </div>
+
+        <button id="save-btn" class="save-btn" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+            </svg>
+            Guardar marcador
+        </button>
+
+        <div id="status-msg" class="status-msg" style="display:none"></div>
+
+        <div class="popup-footer">
+            <a href="#" id="open-app-link">Abrir MyMarks</a>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+
+</html>
