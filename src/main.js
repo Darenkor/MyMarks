@@ -31,18 +31,6 @@ function initAuth() {
   const authForm = document.getElementById('auth-form');
   const authError = document.getElementById('auth-error');
   const authSubmit = document.getElementById('auth-submit');
-  const switchLink = document.getElementById('auth-switch-link');
-  const switchText = document.getElementById('auth-switch-text');
-  let isLogin = true;
-
-  switchLink.addEventListener('click', (e) => {
-    e.preventDefault();
-    isLogin = !isLogin;
-    authSubmit.textContent = isLogin ? 'Iniciar Sesión' : 'Crear Cuenta';
-    switchText.textContent = isLogin ? '¿No tienes cuenta?' : '¿Ya tienes cuenta?';
-    switchLink.textContent = isLogin ? 'Crear cuenta' : 'Iniciar sesión';
-    authError.textContent = '';
-  });
 
   authForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -50,18 +38,14 @@ function initAuth() {
     const password = document.getElementById('auth-password').value;
     authError.textContent = '';
     authSubmit.disabled = true;
-    authSubmit.textContent = isLogin ? 'Entrando...' : 'Creando cuenta...';
+    authSubmit.textContent = 'Entrando...';
 
     try {
-      if (isLogin) {
-        await signIn(email, password);
-      } else {
-        await signUp(email, password);
-      }
+      await signIn(email, password);
     } catch (err) {
       authError.textContent = err.message || 'Error de autenticación';
       authSubmit.disabled = false;
-      authSubmit.textContent = isLogin ? 'Iniciar Sesión' : 'Crear Cuenta';
+      authSubmit.textContent = 'Iniciar Sesión';
     }
   });
 
