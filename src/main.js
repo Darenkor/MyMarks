@@ -334,11 +334,14 @@ async function pullFromCloud() {
   try {
     const cloudData = await cloudLoad();
     if (cloudData && cloudData.boards && cloudData.boards.length > 0) {
-      // Check if local is empty
       const localBoards = await getBoards();
       if (localBoards.length === 0) {
-        // Import cloud data to local
+        // Local is empty — bulk import
         await bulkImport(cloudData.boards, cloudData.categories, cloudData.bookmarks);
+      } else {
+        // Local has data — smart merge
+        await mergeCloudData(cloudData);
+        await deduplicateAll();
       }
     }
   } catch (e) {
@@ -350,6 +353,14 @@ function scheduleCloudSync() {
   clearTimeout(cloudSyncTimeout);
   cloudSyncTimeout = setTimeout(async () => {
     try {
+      // 1. Pull cloud and merge into local first (prevents overwriting other devices)
+      const cloudData = await cloudLoad();
+      if (cloudData && cloudData.boards && cloudData.boards.length > 0) {
+        await mergeCloudData(cloudData);
+        await deduplicateAll();
+      }
+
+      // 2. Push merged local data to cloud
       const boards = await getBoards();
       const allCats = [];
       const allBks = [];
