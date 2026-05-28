@@ -305,4 +305,129 @@ export async function syncToExtensionStorage() {
   }
 }
 
+// -------- Get all categories (used for dedup/import) --------
+export async function getAllCategories() {
+  await openDB();
+  return promisify(tx(['categories']).getAll());
+}
+
+// -------- Deduplication --------
+/**
+ * Remove duplicate boards (by name), categories (by name+boardId),
+ * and bookmarks (by URL+categoryId). Keeps the oldest entry.
+ * Returns counts of removed items.
+ */
+export async function deduplicateAll() {
+  await openDB();
+
+  const allBoards = await promisify(tx(['boards']).getAll());
+  const allCats = await promisify(tx(['categories']).getAll());
+  const allBks = await promisify(tx(['bookmarks']).getAll());
+
+  // --- Deduplicate boards by name ---
+  const boardsByName = {};
+  const boardIdMap = {}; // maps removed board IDs -> kept board ID
+  const boardsToDelete = [];
+
+  // Sort by createdAt so the oldest comes first
+  allBoards.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+  for (const board of allBoards) {
+    const key = board.name.trim().toLowerCase();
+    if (boardsByName[key]) {
+      // This is a duplicate, mark for deletion and map its ID
+      boardIdMap[board.id] = boardsByName[key].id;
+      boardsToDelete.push(board.id);
+    } else {
+      boardsByName[key] = board;
+    }
+  }
+
+  // --- Remap categories whose board was deleted ---
+  for (const cat of allCats) {
+    if (boardIdMap[cat.boardId]) {
+      cat.boardId = boardIdMap[cat.boardId];
+    }
+  }
+  for (const bk of allBks) {
+    if (boardIdMap[bk.boardId]) {
+      bk.boardId = boardIdMap[bk.boardId];
+    }
+  }
+
+  // --- Deduplicate categories by name + boardId ---
+  const catsByKey = {};
+  const catIdMap = {}; // maps removed cat IDs -> kept cat ID
+  const catsToDelete = [];
+
+  allCats.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+  for (const cat of allCats) {
+    const key = `${cat.boardId}::${cat.name.trim().toLowerCase()}`;
+    if (catsByKey[key]) {
+      catIdMap[cat.id] = catsByKey[key].id;
+      catsToDelete.push(cat.id);
+    } else {
+      catsByKey[key] = cat;
+    }
+  }
+
+  // --- Remap bookmarks whose category was deleted ---
+  for (const bk of allBks) {
+    if (catIdMap[bk.categoryId]) {
+      bk.categoryId = catIdMap[bk.categoryId];
+    }
+  }
+
+  // --- Deduplicate bookmarks by URL + categoryId ---
+  const bksByKey = {};
+  const bksToDelete = [];
+
+  allBks.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+  for (const bk of allBks) {
+    const url = (bk.url || '').trim().toLowerCase().replace(/\/+$/, '');
+    if (!url) continue; // Skip bookmarks with no URL
+    const key = `${bk.categoryId}::${url}`;
+    if (bksByKey[key]) {
+      bksToDelete.push(bk.id);
+    } else {
+      bksByKey[key] = bk;
+    }
+  }
+
+  // --- Apply deletions in a single transaction ---
+  const t = db.transaction(['boards', 'categories', 'bookmarks'], 'readwrite');
+
+  for (const id of boardsToDelete) t.objectStore('boards').delete(id);
+  for (const id of catsToDelete) t.objectStore('categories').delete(id);
+  for (const id of bksToDelete) t.objectStore('bookmarks').delete(id);
+
+  // Remap remaining categories and bookmarks that pointed to deleted parents
+  for (const cat of allCats) {
+    if (!catsToDelete.includes(cat.id) && (boardIdMap[cat.boardId] || catIdMap[cat.id])) {
+      // boardId was already updated in-memory above, just persist
+    }
+    if (!catsToDelete.includes(cat.id)) {
+      t.objectStore('categories').put(cat);
+    }
+  }
+  for (const bk of allBks) {
+    if (!bksToDelete.includes(bk.id)) {
+      t.objectStore('bookmarks').put(bk);
+    }
+  }
+
+  await new Promise((resolve, reject) => {
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+  });
+
+  // Normalize orders after dedup
+  await normalizeOrders();
+
+  return {
+    boards: boardsToDelete.length,
+    categories: catsToDelete.length,
+    bookmarks: bksToDelete.length,
+  };
+}
+
 export { generateId };

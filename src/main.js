@@ -10,9 +10,9 @@ import { search, refreshSearchCache } from './search.js';
 import { importBookmarks, exportBookmarks } from './import-export.js';
 import {
   getBoards, getBoard, createBoard, updateBoard, deleteBoard,
-  getCategoriesByBoard, createCategory, updateCategory, deleteCategory,
+  getCategoriesByBoard, getAllCategories, createCategory, updateCategory, deleteCategory,
   getBookmarksByCategory, getAllBookmarks, createBookmark, updateBookmark, deleteBookmark,
-  bulkImport, clearAll,
+  bulkImport, clearAll, deduplicateAll,
 } from './db.js';
 import { getUser, signIn, signUp, signOut, updateUserAuth, onAuthChange, cloudSave, cloudLoad } from './supabase.js';
 
@@ -166,6 +166,7 @@ async function showSettings(user) {
       <hr class="settings-divider" />
 
       <div class="settings-group">
+        <button class="btn btn-warning btn-sm" id="dedup-btn">🔄 Eliminar duplicados</button>
         <button class="btn btn-danger btn-sm" id="del-all-bookmarks">🗑 Eliminar TODOS los marcadores</button>
         <button class="btn btn-danger btn-sm" id="del-all-cats">🗑 Eliminar TODAS las categorías</button>
         <button class="btn btn-danger btn-sm" id="del-all-boards">🗑 Eliminar TODOS los tableros</button>
@@ -236,6 +237,48 @@ async function showSettings(user) {
     }
     await loadSidebar();
     syncDataForExtension();
+  });
+
+  // Deduplicate
+  document.getElementById('dedup-btn').addEventListener('click', async () => {
+    if (!confirm('¿Buscar y eliminar duplicados en local y en la nube?')) return;
+    try {
+      const result = await deduplicateAll();
+      const total = result.boards + result.categories + result.bookmarks;
+      if (total === 0) {
+        showToast('No se encontraron duplicados', 'info');
+      } else {
+        showToast(`Eliminados: ${result.boards} tableros, ${result.categories} categorías, ${result.bookmarks} marcadores duplicados`, 'success');
+      }
+      closeModal();
+      await loadSidebar();
+      if (activeBoardId) {
+        const categories = await renderBoard(activeBoardId, getBookmarkHandlers());
+        initSortables(categories);
+      }
+      // Force immediate cloud sync (don't rely on debounce)
+      try {
+        const boards = await getBoards();
+        const allCats = [];
+        const allBks = [];
+        for (const b of boards) {
+          const cats = await getCategoriesByBoard(b.id);
+          allCats.push(...cats);
+          for (const c of cats) {
+            const bks = await getBookmarksByCategory(c.id);
+            allBks.push(...bks);
+          }
+        }
+        await cloudSave(boards, allCats, allBks);
+        showToast('☁️ Datos sincronizados con la nube', 'success');
+      } catch (cloudErr) {
+        showToast('⚠️ Limpieza local OK, pero falló la sincronización con la nube', 'error');
+        console.warn('Cloud sync after dedup failed:', cloudErr);
+      }
+      syncDataForExtension();
+    } catch (e) {
+      showToast(`Error: ${e.message}`, 'error');
+    }
   });
 
   // Delete all bookmarks
@@ -323,6 +366,118 @@ function scheduleCloudSync() {
       console.warn('Cloud sync failed:', e);
     }
   }, 2000); // Debounce 2 seconds
+}
+
+// -------- Manual Full Sync --------
+async function fullSync() {
+  const syncBtn = document.getElementById('sync-btn');
+  if (syncBtn) {
+    syncBtn.classList.add('syncing');
+    syncBtn.querySelector('span').textContent = 'Sincronizando...';
+  }
+
+  try {
+    // 1. Pull cloud data and merge into local
+    const cloudData = await cloudLoad();
+    if (cloudData && cloudData.boards && cloudData.boards.length > 0) {
+      await mergeCloudData(cloudData);
+    }
+
+    // 2. Deduplicate
+    await deduplicateAll();
+
+    // 3. Push clean local data to cloud
+    const boards = await getBoards();
+    const allCats = [];
+    const allBks = [];
+    for (const b of boards) {
+      const cats = await getCategoriesByBoard(b.id);
+      allCats.push(...cats);
+      for (const c of cats) {
+        const bks = await getBookmarksByCategory(c.id);
+        allBks.push(...bks);
+      }
+    }
+    await cloudSave(boards, allCats, allBks);
+
+    // 4. Refresh UI
+    await loadSidebar();
+    if (activeBoardId) {
+      const categories = await renderBoard(activeBoardId, getBookmarkHandlers());
+      initSortables(categories);
+    }
+    await refreshSearchCache();
+
+    showToast('☁️ Sincronización completada', 'success');
+  } catch (e) {
+    showToast(`Error al sincronizar: ${e.message}`, 'error');
+    console.error('Full sync failed:', e);
+  } finally {
+    if (syncBtn) {
+      syncBtn.classList.remove('syncing');
+      syncBtn.querySelector('span').textContent = 'Sincronizar';
+    }
+  }
+}
+
+async function mergeCloudData(cloudData) {
+  const existingBoards = await getBoards();
+  const existingCats = await getAllCategories();
+  const existingBks = await getAllBookmarks();
+
+  const boardMap = {};
+  for (const b of existingBoards) boardMap[b.name.trim().toLowerCase()] = b;
+
+  const catMap = {};
+  for (const c of existingCats) catMap[`${c.boardId}::${c.name.trim().toLowerCase()}`] = c;
+
+  const bkMap = {};
+  for (const bk of existingBks) {
+    const url = (bk.url || '').trim().toLowerCase().replace(/\/+$/, '');
+    if (url) bkMap[`${bk.categoryId}::${url}`] = bk;
+  }
+
+  const boardIdRemap = {};
+  for (const cb of cloudData.boards) {
+    const key = cb.name.trim().toLowerCase();
+    if (boardMap[key]) {
+      boardIdRemap[cb.id] = boardMap[key].id;
+    } else {
+      const newBoard = await createBoard({ name: cb.name, color: cb.color });
+      boardIdRemap[cb.id] = newBoard.id;
+      boardMap[key] = newBoard;
+    }
+  }
+
+  const catIdRemap = {};
+  for (const cc of (cloudData.categories || [])) {
+    const actualBoardId = boardIdRemap[cc.boardId] || cc.boardId;
+    const key = `${actualBoardId}::${cc.name.trim().toLowerCase()}`;
+    if (catMap[key]) {
+      catIdRemap[cc.id] = catMap[key].id;
+    } else {
+      const newCat = await createCategory({ boardId: actualBoardId, name: cc.name, color: cc.color });
+      catIdRemap[cc.id] = newCat.id;
+      catMap[key] = newCat;
+    }
+  }
+
+  for (const cbk of (cloudData.bookmarks || [])) {
+    const actualBoardId = boardIdRemap[cbk.boardId] || cbk.boardId;
+    const actualCatId = catIdRemap[cbk.categoryId] || cbk.categoryId;
+    const url = (cbk.url || '').trim().toLowerCase().replace(/\/+$/, '');
+    if (!url) continue;
+    const key = `${actualCatId}::${url}`;
+    if (!bkMap[key]) {
+      const newBk = await createBookmark({
+        categoryId: actualCatId, boardId: actualBoardId,
+        url: cbk.url, title: cbk.title,
+        description: cbk.description || '', favicon: cbk.favicon || '',
+        tags: cbk.tags || [], notes: cbk.notes || '',
+      });
+      bkMap[key] = newBk;
+    }
+  }
 }
 
 // -------- Sidebar --------
@@ -497,6 +652,9 @@ function wireEvents() {
 
   // Export
   document.getElementById('export-btn').addEventListener('click', handleExport);
+
+  // Sync
+  document.getElementById('sync-btn').addEventListener('click', fullSync);
 
   // Close context menu on click outside
   document.addEventListener('click', () => {
@@ -853,12 +1011,20 @@ async function handleImportFile(e) {
 
   try {
     const result = await importBookmarks(file);
+    const parts = [];
+    if (result.boards > 0) parts.push(`${result.boards} tableros nuevos`);
+    if (result.categories > 0) parts.push(`${result.categories} categorías nuevas`);
+    if (result.bookmarks > 0) parts.push(`${result.bookmarks} marcadores nuevos`);
+    if (result.updatedBookmarks > 0) parts.push(`${result.updatedBookmarks} actualizados`);
+    if (result.skippedBookmarks > 0) parts.push(`${result.skippedBookmarks} sin cambios`);
+    const summary = parts.length > 0 ? parts.join(' · ') : 'Sin cambios — todo ya estaba importado';
+
     document.getElementById('modal-body').innerHTML = `
       <div class="import-progress">
         <svg viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2" style="width:48px;height:48px;margin-bottom:16px"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
         <p><strong>¡Importación completada!</strong></p>
         <p style="color:var(--text-secondary);margin-top:8px;">
-          ${result.boards} tableros · ${result.categories} categorías · ${result.bookmarks} marcadores
+          ${summary}
         </p>
       </div>`;
     document.getElementById('modal-footer').innerHTML = `
@@ -873,6 +1039,24 @@ async function handleImportFile(e) {
       await selectBoard(boards[0].id);
     }
     await refreshSearchCache();
+    // Force immediate cloud sync after import
+    try {
+      const allBoards = await getBoards();
+      const allCats = [];
+      const allBks = [];
+      for (const b of allBoards) {
+        const cats = await getCategoriesByBoard(b.id);
+        allCats.push(...cats);
+        for (const c of cats) {
+          const bks = await getBookmarksByCategory(c.id);
+          allBks.push(...bks);
+        }
+      }
+      await cloudSave(allBoards, allCats, allBks);
+      showToast('☁️ Sincronizado con la nube', 'success');
+    } catch (cloudErr) {
+      console.warn('Cloud sync after import failed:', cloudErr);
+    }
     syncDataForExtension();
   } catch (err) {
     document.getElementById('modal-body').innerHTML = `

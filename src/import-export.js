@@ -2,7 +2,11 @@
    import-export.js — Netscape HTML Bookmark Import/Export
    ============================================ */
 
-import { generateId, bulkImport, getBoards, getCategoriesByBoard, getBookmarksByCategory } from './db.js';
+import {
+  generateId, bulkImport, getBoards, getCategoriesByBoard,
+  getBookmarksByCategory, getAllCategories, getAllBookmarks,
+  createBoard, createCategory, createBookmark, updateBookmark,
+} from './db.js';
 
 /**
  * Parse a Netscape Bookmark HTML file into boards, categories, and bookmarks.
@@ -155,7 +159,10 @@ export function parseBookmarksHTML(html) {
 }
 
 /**
- * Import bookmarks from an HTML file.
+ * Import bookmarks from an HTML file with smart merge.
+ * - Boards: matched by name (case-insensitive). If exists, reuse; otherwise create.
+ * - Categories: matched by name + board. If exists, reuse; otherwise create.
+ * - Bookmarks: matched by URL + category. If exists, update title; otherwise create.
  */
 export async function importBookmarks(file) {
     return new Promise((resolve, reject) => {
@@ -163,12 +170,121 @@ export async function importBookmarks(file) {
         reader.onload = async (e) => {
             try {
                 const html = e.target.result;
-                const data = parseBookmarksHTML(html);
-                await bulkImport(data.boards, data.categories, data.bookmarks);
+                const parsed = parseBookmarksHTML(html);
+
+                // Load existing data for matching
+                const existingBoards = await getBoards();
+                const existingCats = await getAllCategories();
+                const existingBks = await getAllBookmarks();
+
+                // Build lookup maps (case-insensitive, trimmed)
+                const boardMap = {}; // lowercase name -> board
+                for (const b of existingBoards) {
+                    boardMap[b.name.trim().toLowerCase()] = b;
+                }
+
+                const catMap = {}; // "boardId::lowercase name" -> category
+                for (const c of existingCats) {
+                    catMap[`${c.boardId}::${c.name.trim().toLowerCase()}`] = c;
+                }
+
+                const bkMap = {}; // "categoryId::normalized url" -> bookmark
+                for (const bk of existingBks) {
+                    const url = (bk.url || '').trim().toLowerCase().replace(/\/+$/, '');
+                    if (url) bkMap[`${bk.categoryId}::${url}`] = bk;
+                }
+
+                let created = { boards: 0, categories: 0, bookmarks: 0 };
+                let updated = { bookmarks: 0 };
+                let skipped = { bookmarks: 0 };
+
+                // Map from parsed board IDs to actual board IDs
+                const boardIdRemap = {};
+
+                // --- Process boards ---
+                for (const parsedBoard of parsed.boards) {
+                    const key = parsedBoard.name.trim().toLowerCase();
+                    if (boardMap[key]) {
+                        // Board exists, reuse its ID
+                        boardIdRemap[parsedBoard.id] = boardMap[key].id;
+                    } else {
+                        // Create new board
+                        const newBoard = await createBoard({
+                            name: parsedBoard.name,
+                            color: parsedBoard.color,
+                        });
+                        boardIdRemap[parsedBoard.id] = newBoard.id;
+                        boardMap[key] = newBoard;
+                        created.boards++;
+                    }
+                }
+
+                // Map from parsed category IDs to actual category IDs
+                const catIdRemap = {};
+
+                // --- Process categories ---
+                for (const parsedCat of parsed.categories) {
+                    const actualBoardId = boardIdRemap[parsedCat.boardId] || parsedCat.boardId;
+                    const key = `${actualBoardId}::${parsedCat.name.trim().toLowerCase()}`;
+
+                    if (catMap[key]) {
+                        // Category exists, reuse its ID
+                        catIdRemap[parsedCat.id] = catMap[key].id;
+                    } else {
+                        // Create new category
+                        const newCat = await createCategory({
+                            boardId: actualBoardId,
+                            name: parsedCat.name,
+                            color: parsedCat.color,
+                        });
+                        catIdRemap[parsedCat.id] = newCat.id;
+                        catMap[key] = newCat;
+                        created.categories++;
+                    }
+                }
+
+                // --- Process bookmarks ---
+                for (const parsedBk of parsed.bookmarks) {
+                    const actualBoardId = boardIdRemap[parsedBk.boardId] || parsedBk.boardId;
+                    const actualCatId = catIdRemap[parsedBk.categoryId] || parsedBk.categoryId;
+                    const url = (parsedBk.url || '').trim().toLowerCase().replace(/\/+$/, '');
+
+                    if (!url) continue; // Skip empty URLs
+
+                    const key = `${actualCatId}::${url}`;
+
+                    if (bkMap[key]) {
+                        // Bookmark exists — update title if it changed
+                        const existing = bkMap[key];
+                        if (parsedBk.title && parsedBk.title !== existing.title) {
+                            await updateBookmark(existing.id, { title: parsedBk.title });
+                            updated.bookmarks++;
+                        } else {
+                            skipped.bookmarks++;
+                        }
+                    } else {
+                        // Create new bookmark
+                        const newBk = await createBookmark({
+                            categoryId: actualCatId,
+                            boardId: actualBoardId,
+                            url: parsedBk.url,
+                            title: parsedBk.title,
+                            description: parsedBk.description || '',
+                            favicon: parsedBk.favicon || '',
+                            tags: parsedBk.tags || [],
+                            notes: parsedBk.notes || '',
+                        });
+                        bkMap[key] = newBk;
+                        created.bookmarks++;
+                    }
+                }
+
                 resolve({
-                    boards: data.boards.length,
-                    categories: data.categories.length,
-                    bookmarks: data.bookmarks.length,
+                    boards: created.boards,
+                    categories: created.categories,
+                    bookmarks: created.bookmarks,
+                    updatedBookmarks: updated.bookmarks,
+                    skippedBookmarks: skipped.bookmarks,
                 });
             } catch (err) {
                 reject(err);

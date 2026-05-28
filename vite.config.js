@@ -1,11 +1,19 @@
 import { defineConfig } from 'vite';
 
-export default defineConfig({
-    server: {
-        host: true, // Exposes on 0.0.0.0 so other devices on the LAN can access
-        port: 5173,
-    },
-    build: {
-        outDir: 'dist',
-    },
+export default defineConfig(({ mode }) => {
+    const isPortable = mode === 'portable';
+
+    return {
+        base: isPortable ? './' : '/MyMarks/',
+        server: {
+            host: true,
+            port: 5173,
+        },
+        build: {
+            outDir: isPortable ? 'dist-portable' : 'dist',
+        },
+        plugins: isPortable
+            ? [import('vite-plugin-singlefile').then(m => m.viteSingleFile())]
+            : [],
+    };
 });

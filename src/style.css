@@ -839,6 +839,15 @@ ul {
   background: var(--danger-hover);
 }
 
+.btn-warning {
+  background: #f59e0b;
+  color: #fff;
+}
+
+.btn-warning:hover {
+  background: #d97706;
+}
+
 .btn-ghost {
   background: transparent;
   color: var(--text-secondary);
@@ -1728,4 +1737,19 @@ mark {
   padding: 14px 20px;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
+}
+
+/* Sync button animation */
+.sidebar-action.syncing svg {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.sidebar-action.syncing {
+  opacity: 0.7;
+  pointer-events: none;
 }
